@@ -54,6 +54,7 @@
             resourcesGreenTop: [],
             resourcesBooks: [],
             resourcesArticles: [],
+            departmentWebApps: [], // Array baharu untuk menyimpan pelbagai Web App
             cmeSchedule: [],
             clinicStats: {
                 sunScan: 0, monAntenatal: 0, monScan: 0, tueGynae: 0, tuePPC: 0, tueColpo: 0, tuePostnatal: 0, wedGynae: 0, thuAntenatal: 0,
@@ -63,8 +64,7 @@
             },
             oncallLink: "https://www.moh.gov.my", 
             otBookingLink: "https://docs.google.com/spreadsheets/", 
-            clinicLink: "https://www.moh.gov.my", 
-            webAppLink: "https://script.google.com/"
+            clinicLink: "https://www.moh.gov.my"
         };
 
         // --- FUNGSI ASAS ANTARAMUKA (DIJAMIN BERFUNGSI) ---
@@ -149,6 +149,7 @@
                 else if (type === 'resourcesGreenTop') { titleStr = 'Tambah Green Top Guideline'; iconStr = '<i class="ph-bold ph-book-open text-warmYellow"></i> '; }
                 else if (type === 'resourcesBooks') { titleStr = 'Tambah Buku'; iconStr = '<i class="ph-bold ph-books text-warmYellow"></i> '; }
                 else if (type === 'resourcesArticles') { titleStr = 'Tambah Artikel & Jurnal'; iconStr = '<i class="ph-bold ph-article text-warmYellow"></i> '; }
+                else if (type === 'departmentWebApps') { titleStr = 'Tambah Web App'; iconStr = '<i class="ph-bold ph-app-window text-teal"></i> '; }
                 
                 document.getElementById('complex-modal-title').innerHTML = iconStr + titleStr;
                 
@@ -324,7 +325,6 @@
                 updateLinkElement('btn-oncall-link', window.appData.oncallLink);
                 updateLinkElement('btn-ot-link', window.appData.otBookingLink);
                 updateLinkElement('btn-clinic-link', window.appData.clinicLink);
-                updateLinkElement('btn-webapp-link', window.appData.webAppLink);
 
                 const orgUrl = window.appData.orgChartUrl || "";
                 const orgChartImg = document.getElementById('org-chart-img');
@@ -346,6 +346,7 @@
                 renderList('greentop-list', window.appData.resourcesGreenTop || [], 'resourcesGreenTop');
                 renderList('books-list', window.appData.resourcesBooks || [], 'resourcesBooks');
                 renderList('articles-list', window.appData.resourcesArticles || [], 'resourcesArticles');
+                renderList('webapp-list', window.appData.departmentWebApps || [], 'departmentWebApps'); // Render Array App Web
                 renderCMEList('cme-list', window.appData.cmeSchedule || []);
                 renderClinicData();
                 
@@ -377,7 +378,7 @@
                 div.className = 'flex items-center justify-between p-3 bg-gray-50 hover:bg-cream rounded-xl border border-gray-200 transition mb-2';
                 div.innerHTML = `
                     <a href="${item.url}" target="_blank" class="flex-grow font-medium text-gray-800 hover:text-teal truncate mr-4">
-                        <i class="ph-fill ph-file-text text-gray-500 mr-2 text-lg align-middle"></i> ${item.title}
+                        <i class="ph-fill ph-app-window text-gray-500 mr-2 text-lg align-middle"></i> ${item.title}
                     </a>
                     <button onclick="window.deleteItem('${arrayName}', ${index})" class="admin-edit-btn ${window.isAdmin ? '' : 'hidden'} text-red-400 hover:text-red-600 bg-white shadow-sm rounded-full p-2 hover:bg-red-50 transition border border-gray-100">
                         <i class="ph-bold ph-trash"></i>
@@ -568,7 +569,6 @@
 </head>
 <body class="bg-bgGray text-gray-800 font-sans antialiased min-h-screen">
 
-    <!-- Toast Layer dipertingkatkan dengan z-[9999] -->
     <div id="toast" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 translate-y-full opacity-0 bg-green-500 text-white px-6 py-3 rounded-full shadow-lg transition-all duration-300 z-[9999] pointer-events-none text-sm font-semibold">
         Notification
     </div>
@@ -1097,19 +1097,29 @@
 
     <!-- 7. Web App Modal -->
     <div id="modal-webapp" class="modal-overlay hidden fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-white rounded-3xl max-w-md w-full shadow-2xl relative border-t-8 border-teal">
-            <button onclick="window.closeAllModals()" class="close-modal absolute top-4 right-4 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full p-2"><i class="ph ph-x font-bold"></i></button>
-            <div class="p-8 text-center">
-                <div class="inline-block p-4 bg-teal bg-opacity-20 rounded-full text-teal mb-4"><i class="ph-duotone ph-app-window text-5xl"></i></div>
-                <h2 class="text-2xl font-bold text-gray-800 mb-2">Department Web App</h2>
-                <p class="text-gray-500 mb-6">Launch the internal web application for data entry and specific department tools.</p>
+        <div class="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl relative border-t-8 border-teal">
+            <button onclick="window.closeModal('modal-webapp')" class="close-modal absolute top-4 right-4 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full p-2"><i class="ph ph-x font-bold"></i></button>
+            <div class="p-8">
+                <div class="flex items-center gap-4 mb-6 border-b pb-4">
+                    <div class="p-3 bg-teal bg-opacity-20 rounded-full text-teal"><i class="ph-duotone ph-app-window text-3xl"></i></div>
+                    <h2 class="text-2xl font-bold text-gray-800">Department Web Apps</h2>
+                </div>
                 
-                <a id="btn-webapp-link" href="#" class="inline-block w-full bg-gray-800 hover:bg-black text-white font-bold py-3 px-6 rounded-full shadow-md transition">
-                    Launch App <i class="ph ph-rocket-launch ml-1"></i>
-                </a>
-                 <button onclick="window.triggerEdit('webAppLink', 'Tampal URL untuk Web App Jabatan:')" class="admin-edit-btn hidden mt-4 text-teal hover:text-teal-700 text-sm font-semibold flex items-center justify-center gap-1 w-full bg-teal-50 py-2 rounded-full border border-teal-200">
-                    <i class="ph-bold ph-plus-circle text-lg"></i> Add / Edit App URL
-                </button>
+                <p class="text-gray-500 mb-6">Senarai aplikasi web dalaman untuk kegunaan sistem pengurusan jabatan.</p>
+                
+                <div class="bg-white p-5 rounded-2xl border border-teal shadow-sm">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+                            <i class="ph-fill ph-app-window text-teal text-xl"></i> Pautan Web App
+                        </h3>
+                        <!-- Butang Tambah App -->
+                        <button onclick="window.openComplexModal('departmentWebApps')" class="admin-edit-btn hidden bg-teal hover:bg-teal-600 text-white px-3 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 shadow-sm">
+                            <i class="ph-bold ph-plus"></i> Tambah App
+                        </button>
+                    </div>
+                    <!-- Senarai berbilang aplikasi web akan dijana di sini -->
+                    <div id="webapp-list" class="space-y-2"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -1212,12 +1222,12 @@
                     <input type="text" id="complex-presenter" placeholder="cth., Dr. Ali" class="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-coral outline-none bg-gray-50 focus:bg-white transition">
                 </div>
                 <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-1">Tajuk / Nama</label>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Tajuk / Nama App</label>
                     <input type="text" id="complex-title" placeholder="Masukkan tajuk..." class="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-teal outline-none bg-gray-50 focus:bg-white transition">
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">URL Dokumen (Pautan)</label>
-                    <input type="url" id="complex-url" placeholder="Tampal pautan Google Drive..." class="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-teal outline-none bg-gray-50 focus:bg-white transition">
+                    <input type="url" id="complex-url" placeholder="Tampal pautan..." class="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-teal outline-none bg-gray-50 focus:bg-white transition">
                 </div>
             </div>
             <div class="flex justify-end gap-3">
