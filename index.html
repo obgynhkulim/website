@@ -1,0 +1,1274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jabatan O&G Hospital Kulim</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Phosphor Icons for elegant, 3D-like icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script type="module">
+        // Tailwind Configuration
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        bgGray: '#F5F5F5',
+                        cream: '#FFF6DE',
+                        teal: '#8BDFDD',
+                        coral: '#F48F68',
+                        warmYellow: '#FFE394'
+                    },
+                    fontFamily: {
+                        sans: ['Poppins', 'sans-serif'],
+                    }
+                }
+            }
+        }
+
+        // --- FIREBASE SETUP ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyCYAVz1-JlQ5Z52D5aoOXdEvq1yCl3EKHY",
+            authDomain: "obgyn-hkulim.firebaseapp.com",
+            projectId: "obgyn-hkulim",
+            storageBucket: "obgyn-hkulim.firebasestorage.app",
+            messagingSenderId: "769066649033",
+            appId: "1:769066649033:web:1ff195fe948fe084e55418"
+        };
+        const customAppId = "obgyn-hkulim";
+
+        // Global State & Offline Fallback Data
+        window.isAdmin = false;
+        window.appData = {
+            announcements: "Welcome to the official portal of Jabatan O&G Hospital Kulim. Please check back for updates on courses and CME schedules.\n\nUpcoming: Basic Surgical Skills Course (October).",
+            announcementLink: "",
+            aboutPhone: "04-4272733 ext 3256",
+            orgChartUrl: "",
+            adminMinutes: [],
+            adminPolicies: [],
+            resourcesCPG: [{title: "MOH Clinical Practice Guidelines (O&G)", url: "https://www.moh.gov.my/index.php/pages/view/1814"}],
+            resourcesGreenTop: [],
+            resourcesBooks: [],
+            resourcesArticles: [],
+            cmeSchedule: [],
+            clinicStats: {
+                sunScan: 0, monAntenatal: 0, monScan: 0, tueGynae: 0, tuePPC: 0, tueColpo: 0, tuePostnatal: 0, wedGynae: 0, thuAntenatal: 0,
+                detailScanActive: false, detailScanCount: 0,
+                combinedActive: false, combinedCount: 0,
+                endocrineActive: false, endocrineCount: 0
+            },
+            oncallLink: "https://www.moh.gov.my", 
+            otBookingLink: "https://docs.google.com/spreadsheets/", 
+            clinicLink: "https://www.moh.gov.my", 
+            webAppLink: "https://script.google.com/"
+        };
+
+        // --- FUNGSI ASAS ANTARAMUKA (DIJAMIN BERFUNGSI) ---
+        window.showToast = function(message, isError = false) {
+            const toast = document.getElementById('toast');
+            if (!toast) return;
+            toast.innerText = message;
+            toast.style.backgroundColor = isError ? '#ef4444' : '#10b981';
+            toast.classList.remove('translate-y-full', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-full', 'opacity-0');
+            }, 3000);
+        };
+
+        window.switchPage = function(pageId) {
+            document.getElementById('landing-page').classList.add('hidden');
+            document.getElementById('dashboard-page').classList.add('hidden');
+            document.getElementById(pageId).classList.remove('hidden');
+        };
+
+        window.openModal = function(modalId) {
+            const modal = document.getElementById(modalId);
+            if(modal) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
+        };
+
+        window.closeModal = function(modalId) {
+            const modal = document.getElementById(modalId);
+            if(modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+        };
+
+        window.closeAllModals = function() {
+            document.querySelectorAll('.modal-overlay').forEach(modal => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            });
+        };
+
+        window.triggerEdit = function(dataKey, promptText) {
+            if (!window.isAdmin) return;
+            document.getElementById('edit-prompt-text').innerText = promptText;
+            const inputField = document.getElementById('edit-input-field');
+            inputField.value = window.appData[dataKey] || "";
+            window.currentEditKey = dataKey;
+            window.openModal('edit-modal');
+        };
+
+        window.saveEdit = function() {
+            const newValue = document.getElementById('edit-input-field').value;
+            if (window.currentEditKey) {
+                window.saveData(window.currentEditKey, newValue);
+                window.closeModal('edit-modal');
+            }
+        };
+
+        window.openComplexModal = function(type) {
+            if (!window.isAdmin) return;
+            window.currentAddType = type;
+            
+            document.getElementById('complex-title').value = '';
+            document.getElementById('complex-url').value = '';
+            document.getElementById('complex-date').value = '';
+            document.getElementById('complex-presenter').value = '';
+            
+            if (type === 'cmeSchedule') {
+                document.getElementById('complex-modal-title').innerHTML = '<i class="ph-bold ph-presentation-chart text-teal"></i> Tambah CME Baru';
+                document.getElementById('field-date').classList.remove('hidden');
+                document.getElementById('field-presenter').classList.remove('hidden');
+                document.getElementById('complex-btn-save').className = 'px-5 py-2 rounded-full bg-teal hover:bg-teal-600 text-white font-bold shadow-md transition';
+            } else {
+                let titleStr = 'Tambah Item';
+                let iconStr = '<i class="ph-bold ph-plus-circle text-coral"></i> ';
+                
+                if (type === 'adminMinutes') { titleStr = 'Tambah Minit Mesyuarat'; iconStr = '<i class="ph-bold ph-users text-teal"></i> '; }
+                else if (type === 'adminPolicies') { titleStr = 'Tambah Polisi Jabatan'; iconStr = '<i class="ph-bold ph-shield-check text-coral"></i> '; }
+                else if (type === 'resourcesCPG') { titleStr = 'Tambah CPG'; iconStr = '<i class="ph-bold ph-book-bookmark text-warmYellow"></i> '; }
+                else if (type === 'resourcesGreenTop') { titleStr = 'Tambah Green Top Guideline'; iconStr = '<i class="ph-bold ph-book-open text-warmYellow"></i> '; }
+                else if (type === 'resourcesBooks') { titleStr = 'Tambah Buku'; iconStr = '<i class="ph-bold ph-books text-warmYellow"></i> '; }
+                else if (type === 'resourcesArticles') { titleStr = 'Tambah Artikel & Jurnal'; iconStr = '<i class="ph-bold ph-article text-warmYellow"></i> '; }
+                
+                document.getElementById('complex-modal-title').innerHTML = iconStr + titleStr;
+                
+                document.getElementById('field-date').classList.add('hidden');
+                document.getElementById('field-presenter').classList.add('hidden');
+                document.getElementById('complex-btn-save').className = 'px-5 py-2 rounded-full bg-coral hover:bg-[#e07d57] text-white font-bold shadow-md transition';
+            }
+            window.openModal('complex-add-modal');
+        };
+
+        window.saveComplexItem = function() {
+            const type = window.currentAddType;
+            const title = document.getElementById('complex-title').value.trim();
+            const url = document.getElementById('complex-url').value.trim();
+            
+            if (!title) { window.showToast("Tajuk diperlukan!", true); return; }
+
+            let newItem = { title, url };
+
+            if (type === 'cmeSchedule') {
+                const date = document.getElementById('complex-date').value.trim();
+                const presenter = document.getElementById('complex-presenter').value.trim();
+                if (!date || !presenter) { window.showToast("Tarikh dan Pembentang diperlukan untuk CME!", true); return; }
+                newItem = { date, presenter, title, url };
+            }
+
+            let currentArray = window.appData[type] || [];
+            currentArray.push(newItem);
+            window.saveData(type, currentArray);
+            window.closeModal('complex-add-modal');
+        };
+
+        window.deleteItem = function(arrayName, index) {
+            if (!window.isAdmin) return;
+            let currentArray = window.appData[arrayName] || [];
+            currentArray.splice(index, 1);
+            window.saveData(arrayName, currentArray);
+            window.showToast("Item telah dipadam.");
+        };
+
+        window.handleAdminLogin = function() {
+            const emailField = document.getElementById('admin-email');
+            const passwordField = document.getElementById('admin-password');
+            
+            const email = emailField ? emailField.value.trim().toLowerCase() : "";
+            const password = passwordField ? passwordField.value.trim() : "";
+            
+            const allowedEmails = ['ilyani.mohdalias@moh.gov.my', 'obgyn.hkulim@moh.gov.my', 'obgynhkulim@gmail.com'];
+            
+            if (allowedEmails.includes(email) && password === 'admin123') {
+                window.isAdmin = true;
+                document.getElementById('btn-admin-login-prompt').classList.add('hidden');
+                document.getElementById('admin-badge').classList.remove('hidden');
+                document.getElementById('btn-admin-logout').classList.remove('hidden');
+                
+                window.updateUIWithData(); 
+                window.closeModal('admin-modal');
+                window.showToast("Selamat kembali. Mod Admin diaktifkan.");
+            } else {
+                window.showToast("Ralat Log Masuk: E-mel atau kata laluan tidak sah.", true);
+            }
+        };
+
+        window.handleAdminLogout = function() {
+            window.isAdmin = false;
+            document.getElementById('btn-admin-login-prompt').classList.remove('hidden');
+            document.getElementById('admin-badge').classList.add('hidden');
+            document.getElementById('btn-admin-logout').classList.add('hidden');
+            
+            window.updateUIWithData(); 
+            window.showToast("Berjaya log keluar.");
+        };
+
+        window.handleOTLogin = function() {
+            const emailField = document.getElementById('ot-email');
+            const passwordField = document.getElementById('ot-password');
+            
+            const email = emailField ? emailField.value.trim().toLowerCase() : "";
+            const password = passwordField ? passwordField.value.trim() : "";
+            
+            const allowedOTEmails = ['obgynhkulim@gmail.com', 'ilyani.mohdalias@moh.gov.my', 'obgyn.hkulim@moh.gov.my'];
+            
+            if (allowedOTEmails.includes(email) && password === 'ot123') {
+                document.getElementById('ot-login-view').classList.add('hidden');
+                document.getElementById('ot-login-view').classList.remove('block');
+                document.getElementById('ot-content-view').classList.remove('hidden');
+                document.getElementById('ot-content-view').classList.add('block');
+                window.showToast("Sistem OT Dibuka");
+            } else {
+                window.showToast("Ralat Log Masuk: E-mel atau kata laluan Sistem OT tidak sah.", true);
+            }
+        };
+
+        window.openClinicEditModal = function() {
+            if(!window.isAdmin) return;
+            const stats = window.appData.clinicStats || {};
+            
+            document.getElementById('edit-sunScan').value = stats.sunScan || 0;
+            document.getElementById('edit-monAntenatal').value = stats.monAntenatal || 0;
+            document.getElementById('edit-monScan').value = stats.monScan || 0;
+            document.getElementById('edit-tueGynae').value = stats.tueGynae || 0;
+            document.getElementById('edit-tuePPC').value = stats.tuePPC || 0;
+            document.getElementById('edit-tueColpo').value = stats.tueColpo || 0;
+            document.getElementById('edit-tuePostnatal').value = stats.tuePostnatal || 0;
+            document.getElementById('edit-wedGynae').value = stats.wedGynae || 0;
+            document.getElementById('edit-thuAntenatal').value = stats.thuAntenatal || 0;
+            
+            document.getElementById('edit-ds-active').checked = stats.detailScanActive || false;
+            document.getElementById('edit-ds-count').value = stats.detailScanCount || 0;
+            document.getElementById('edit-cb-active').checked = stats.combinedActive || false;
+            document.getElementById('edit-cb-count').value = stats.combinedCount || 0;
+            document.getElementById('edit-en-active').checked = stats.endocrineActive || false;
+            document.getElementById('edit-en-count').value = stats.endocrineCount || 0;
+            
+            window.openModal('clinic-edit-modal');
+        };
+
+        window.saveClinicStats = function() {
+            const newStats = {
+                sunScan: parseInt(document.getElementById('edit-sunScan').value) || 0,
+                monAntenatal: parseInt(document.getElementById('edit-monAntenatal').value) || 0,
+                monScan: parseInt(document.getElementById('edit-monScan').value) || 0,
+                tueGynae: parseInt(document.getElementById('edit-tueGynae').value) || 0,
+                tuePPC: parseInt(document.getElementById('edit-tuePPC').value) || 0,
+                tueColpo: parseInt(document.getElementById('edit-tueColpo').value) || 0,
+                tuePostnatal: parseInt(document.getElementById('edit-tuePostnatal').value) || 0,
+                wedGynae: parseInt(document.getElementById('edit-wedGynae').value) || 0,
+                thuAntenatal: parseInt(document.getElementById('edit-thuAntenatal').value) || 0,
+                
+                detailScanActive: document.getElementById('edit-ds-active').checked,
+                detailScanCount: parseInt(document.getElementById('edit-ds-count').value) || 0,
+                combinedActive: document.getElementById('edit-cb-active').checked,
+                combinedCount: parseInt(document.getElementById('edit-cb-count').value) || 0,
+                endocrineActive: document.getElementById('edit-en-active').checked,
+                endocrineCount: parseInt(document.getElementById('edit-en-count').value) || 0
+            };
+            
+            window.saveData('clinicStats', newStats);
+            window.closeModal('clinic-edit-modal');
+        };
+
+        window.saveData = function(key, value) {
+            window.appData[key] = value;
+            window.updateUIWithData();
+            window.showToast("Disimpan secara offline. (Sistem Firebase sedang disekat)", true);
+        };
+
+        // --- ENJIN UPDATE PAPARAN ---
+        window.updateUIWithData = function() {
+            try {
+                const annEl = document.getElementById('display-announcement');
+                if(annEl) annEl.innerText = window.appData.announcements || "Tiada pengumuman buat masa ini.";
+                
+                if (window.appData.aboutPhone === "04-490 6333" || window.appData.aboutPhone === "04-4906333") {
+                    window.appData.aboutPhone = "04-4272733 ext 3256";
+                }
+                const phoneEl = document.getElementById('display-phone');
+                if(phoneEl) phoneEl.innerText = window.appData.aboutPhone || "Not provided";
+                
+                const annLink = window.appData.announcementLink || "";
+                const annLinkEl = document.getElementById('btn-announcement-link');
+                if (annLinkEl) {
+                    if (annLink && annLink !== "#" && annLink.trim() !== "") {
+                        annLinkEl.href = annLink;
+                        annLinkEl.classList.remove('hidden');
+                        annLinkEl.classList.add('inline-flex');
+                    } else {
+                        annLinkEl.classList.add('hidden');
+                        annLinkEl.classList.remove('inline-flex');
+                    }
+                }
+
+                updateLinkElement('btn-oncall-link', window.appData.oncallLink);
+                updateLinkElement('btn-ot-link', window.appData.otBookingLink);
+                updateLinkElement('btn-clinic-link', window.appData.clinicLink);
+                updateLinkElement('btn-webapp-link', window.appData.webAppLink);
+
+                const orgUrl = window.appData.orgChartUrl || "";
+                const orgChartImg = document.getElementById('org-chart-img');
+                const orgChartPlaceholder = document.getElementById('org-chart-placeholder');
+                if (orgChartImg && orgChartPlaceholder) {
+                    if (orgUrl && orgUrl.trim() !== "") {
+                        orgChartImg.src = orgUrl;
+                        orgChartImg.classList.remove('hidden');
+                        orgChartPlaceholder.classList.add('hidden');
+                    } else {
+                        orgChartImg.classList.add('hidden');
+                        orgChartPlaceholder.classList.remove('hidden');
+                    }
+                }
+
+                renderList('minutes-list', window.appData.adminMinutes || [], 'adminMinutes');
+                renderList('policies-list', window.appData.adminPolicies || [], 'adminPolicies');
+                renderList('cpg-list', window.appData.resourcesCPG || [], 'resourcesCPG');
+                renderList('greentop-list', window.appData.resourcesGreenTop || [], 'resourcesGreenTop');
+                renderList('books-list', window.appData.resourcesBooks || [], 'resourcesBooks');
+                renderList('articles-list', window.appData.resourcesArticles || [], 'resourcesArticles');
+                renderCMEList('cme-list', window.appData.cmeSchedule || []);
+                renderClinicData();
+                
+                const clinicAppSection = document.getElementById('clinic-app-link-section');
+                if (window.isAdmin) {
+                    document.querySelectorAll('.admin-edit-btn').forEach(btn => btn.classList.remove('hidden'));
+                    if (clinicAppSection) clinicAppSection.classList.remove('hidden');
+                } else {
+                    document.querySelectorAll('.admin-edit-btn').forEach(btn => btn.classList.add('hidden'));
+                    if (clinicAppSection) clinicAppSection.classList.add('hidden');
+                }
+            } catch (err) {
+                console.error("Error dalam updateUI:", err);
+            }
+        };
+
+        function renderList(containerId, items, arrayName) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            container.innerHTML = '';
+            
+            if (items.length === 0) {
+                container.innerHTML = '<p class="text-sm text-gray-400 italic p-3">No items have been uploaded yet.</p>';
+                return;
+            }
+            
+            items.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = 'flex items-center justify-between p-3 bg-gray-50 hover:bg-cream rounded-xl border border-gray-200 transition mb-2';
+                div.innerHTML = `
+                    <a href="${item.url}" target="_blank" class="flex-grow font-medium text-gray-800 hover:text-teal truncate mr-4">
+                        <i class="ph-fill ph-file-text text-gray-500 mr-2 text-lg align-middle"></i> ${item.title}
+                    </a>
+                    <button onclick="window.deleteItem('${arrayName}', ${index})" class="admin-edit-btn ${window.isAdmin ? '' : 'hidden'} text-red-400 hover:text-red-600 bg-white shadow-sm rounded-full p-2 hover:bg-red-50 transition border border-gray-100">
+                        <i class="ph-bold ph-trash"></i>
+                    </button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function renderCMEList(containerId, items) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            container.innerHTML = '';
+            
+            if (items.length === 0) {
+                container.innerHTML = '<tr><td colspan="5" class="py-6 text-center text-sm text-gray-400 italic">No CME sessions scheduled yet.</td></tr>';
+                return;
+            }
+            
+            items.forEach((item, index) => {
+                const tr = document.createElement('tr');
+                tr.className = 'border-b border-gray-100 hover:bg-cream transition group';
+                tr.innerHTML = `
+                    <td class="py-3 px-4 text-sm text-gray-700 whitespace-nowrap">${item.date}</td>
+                    <td class="py-3 px-4 text-sm font-bold text-gray-800">${item.presenter}</td>
+                    <td class="py-3 px-4 text-sm text-gray-700 font-medium">${item.title}</td>
+                    <td class="py-3 px-4 text-sm text-center">
+                        ${item.url ? `<a href="${item.url}" target="_blank" class="text-teal hover:text-teal-700 bg-teal-50 hover:bg-teal-100 px-3 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 border border-teal-200 transition"><i class="ph-bold ph-download-simple"></i> View</a>` : '<span class="text-gray-400 text-xs">-</span>'}
+                    </td>
+                    <td class="admin-edit-btn ${window.isAdmin ? '' : 'hidden'} py-3 px-4 text-center">
+                        <button onclick="window.deleteItem('cmeSchedule', ${index})" class="text-red-400 hover:text-red-600 bg-white shadow-sm rounded-full p-1.5 hover:bg-red-50 transition border border-gray-100">
+                            <i class="ph-bold ph-trash"></i>
+                        </button>
+                    </td>
+                `;
+                container.appendChild(tr);
+            });
+        }
+
+        function updateLinkElement(id, url) {
+            const el = document.getElementById(id);
+            if (el) {
+                if (url && url !== "#") {
+                    el.href = url;
+                    el.target = "_blank";
+                    el.onclick = null;
+                    el.classList.remove('opacity-50', 'cursor-not-allowed');
+                } else {
+                    el.removeAttribute('target');
+                    el.href = "javascript:void(0)";
+                    el.onclick = () => { if(!window.isAdmin) window.showToast("Pautan belum dikonfigurasi. Sila semak semula nanti.", true); };
+                }
+            }
+        }
+
+        function renderClinicData() {
+            const stats = window.appData.clinicStats || {};
+            const today = new Date();
+            const dayOfWeek = today.getDay(); 
+            const sunday = new Date(today);
+            sunday.setDate(today.getDate() - dayOfWeek);
+            
+            const formatDate = (date) => date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+            
+            for(let i=0; i<5; i++) {
+                const tempDate = new Date(sunday);
+                tempDate.setDate(sunday.getDate() + i);
+                const el = document.getElementById(`date-day-${i}`);
+                if(el) el.innerText = formatDate(tempDate);
+            }
+
+            const setStat = (id, val) => { const el = document.getElementById(id); if(el) el.innerText = val || 0; };
+            setStat('stat-sunScan', stats.sunScan);
+            setStat('stat-monAntenatal', stats.monAntenatal);
+            setStat('stat-monScan', stats.monScan);
+            setStat('stat-tueGynae', stats.tueGynae);
+            setStat('stat-tuePPC', stats.tuePPC);
+            setStat('stat-tueColpo', stats.tueColpo);
+            setStat('stat-tuePostnatal', stats.tuePostnatal);
+            setStat('stat-wedGynae', stats.wedGynae);
+            setStat('stat-thuAntenatal', stats.thuAntenatal);
+
+            const setSpecial = (idStr, isActive, count) => {
+                const el = document.getElementById(`stat-${idStr}`);
+                if(el) {
+                    if(isActive) {
+                        el.innerHTML = `<span class="text-green-600 font-bold">Yes</span> <span class="bg-gray-100 px-2 py-0.5 rounded ml-2 text-xs border border-gray-200">Pesakit: ${count || 0}</span>`;
+                    } else {
+                        el.innerHTML = `<span class="text-red-500 font-bold">No</span>`;
+                    }
+                }
+            };
+
+            setSpecial('detailScan', stats.detailScanActive, stats.detailScanCount);
+            setSpecial('combined', stats.combinedActive, stats.combinedCount);
+            setSpecial('endocrine', stats.endocrineActive, stats.endocrineCount);
+        }
+
+        // --- ENJIN SAMBUNGAN FIREBASE LENGKAP ---
+        async function initializeAppSafe() {
+            window.updateUIWithData(); // Muatkan skrin segera!
+
+            try {
+                const { initializeApp } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js");
+                const { getAuth, signInAnonymously } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
+                const { getFirestore, doc, onSnapshot, setDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+
+                const app = initializeApp(firebaseConfig);
+                const auth = getAuth(app);
+                const db = getFirestore(app);
+
+                signInAnonymously(auth).catch(e => console.log("Firebase Auth Error:", e));
+
+                const docRef = doc(db, 'artifacts', customAppId, 'public', 'data', 'content', 'mainSiteData');
+                
+                onSnapshot(docRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        window.appData = { ...window.appData, ...docSnap.data() };
+                        window.updateUIWithData();
+                    } else {
+                        setDoc(docRef, window.appData).catch(e => {});
+                    }
+                }, (error) => {
+                    console.log("Firebase onSnapshot dihalang. Laman web beroperasi secara Offline.");
+                });
+
+                window.saveData = async function(key, value) {
+                    if (!window.isAdmin) return;
+                    window.appData[key] = value;
+                    window.updateUIWithData();
+                    try {
+                        await setDoc(docRef, window.appData, { merge: true });
+                        window.showToast("Kemas kini berjaya disimpan ke pangkalan data!");
+                    } catch (error) {
+                        window.showToast("Ralat Rangkaian: Disimpan secara offline.", true);
+                    }
+                };
+
+            } catch (err) {
+                console.warn("Sistem Firebase disekat sepenuhnya. Beroperasi secara Offline.", err);
+            }
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeAppSafe);
+        } else {
+            initializeAppSafe();
+        }
+
+    </script>
+
+    <style>
+        .glass-card {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+        }
+        
+        .icon-3d-wrapper {
+            position: relative;
+            display: inline-flex;
+            padding: 1rem;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ffffff, #f0f0f0);
+            box-shadow: 
+                5px 5px 10px rgba(0, 0, 0, 0.1),
+                -5px -5px 10px rgba(255, 255, 255, 0.8),
+                inset 1px 1px 2px rgba(255, 255, 255, 0.9),
+                inset -1px -1px 2px rgba(0, 0, 0, 0.05);
+        }
+
+        .icon-3d {
+            filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.15));
+        }
+
+        .dashboard-card:hover .icon-3d-wrapper {
+            transform: translateY(-5px);
+            box-shadow: 
+                8px 8px 15px rgba(0, 0, 0, 0.15),
+                -8px -8px 15px rgba(255, 255, 255, 0.9);
+        }
+
+        .dashboard-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+    </style>
+</head>
+<body class="bg-bgGray text-gray-800 font-sans antialiased min-h-screen">
+
+    <!-- Toast Layer dipertingkatkan dengan z-[9999] -->
+    <div id="toast" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 translate-y-full opacity-0 bg-green-500 text-white px-6 py-3 rounded-full shadow-lg transition-all duration-300 z-[9999] pointer-events-none text-sm font-semibold">
+        Notification
+    </div>
+
+    <!-- PAGE 1: LANDING PAGE -->
+    <div id="landing-page" class="min-h-screen flex flex-col items-center justify-center bg-cream relative overflow-hidden">
+        
+        <div class="absolute top-[-10%] left-[-10%] w-96 h-96 bg-warmYellow rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob"></div>
+        <div class="absolute top-[20%] right-[-10%] w-96 h-96 bg-teal rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-2000"></div>
+        <div class="absolute bottom-[-20%] left-[20%] w-96 h-96 bg-coral rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-4000"></div>
+
+        <div class="z-10 flex flex-col items-center text-center p-6 glass-card rounded-3xl max-w-lg w-full mx-4 shadow-2xl border-t-4 border-coral">
+            <div class="mb-8 p-2 bg-white rounded-full shadow-lg">
+                <img src="obgynlogorasmi.jpeg" alt="OBGYN H KULIM Logo" 
+                     class="w-48 h-48 object-cover rounded-full border-4 border-cream"
+                     onerror="this.onerror=null; this.src='https://ui-avatars.com/api/?name=O+G&background=8BDFDD&color=fff&size=256&rounded=true'; this.parentElement.innerHTML = '<div class=\'w-48 h-48 rounded-full border-4 border-cream flex items-center justify-center bg-cream text-coral font-bold text-2xl text-center p-4\'>OBGYN<br>H KULIM</div>';">
+            </div>
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">Jabatan O&G</h1>
+            <h2 class="text-xl text-gray-600 mb-8">Hospital Kulim</h2>
+            <p class="text-sm text-gray-500 mb-8 italic">Care • Respect • Safety • Excellence</p>
+
+            <button onclick="window.switchPage('dashboard-page')" class="bg-coral hover:bg-[#e07d57] text-white font-semibold py-4 px-10 rounded-full shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-200 flex items-center gap-2 text-lg">
+                Enter Portal <i class="ph ph-arrow-right font-bold"></i>
+            </button>
+        </div>
+
+        <div class="absolute bottom-6 w-full text-center z-10 px-4">
+            <p class="text-xs text-gray-500 font-medium">&copy; <script>document.write(new Date().getFullYear())</script> Jabatan Obstetrik dan Ginekologi Hospital Kulim. All Rights reserved.</p>
+        </div>
+    </div>
+
+
+    <!-- PAGE 2: MAIN DASHBOARD -->
+    <div id="dashboard-page" class="hidden min-h-screen bg-bgGray flex flex-col">
+        <header class="bg-cream shadow-md sticky top-0 z-40 border-b-4 border-teal">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+                <div class="flex items-center gap-4">
+                    <button onclick="window.switchPage('landing-page')" class="p-2 bg-white rounded-full text-gray-600 hover:text-coral shadow-sm hover:shadow-md transition">
+                        <i class="ph ph-house text-2xl"></i>
+                    </button>
+                    <div>
+                        <h1 class="text-xl font-bold text-gray-800 leading-tight">O&G Dept</h1>
+                        <p class="text-xs text-gray-500">Hospital Kulim Portal</p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <span id="admin-badge" class="hidden bg-teal text-white text-xs px-3 py-1 rounded-full font-semibold shadow-sm flex items-center gap-1">
+                        <i class="ph ph-wrench"></i> Admin Mode
+                    </span>
+                    <button id="btn-admin-login-prompt" onclick="window.openModal('admin-modal')" class="text-sm text-gray-500 hover:text-coral flex items-center gap-1 font-medium bg-white px-4 py-2 rounded-full shadow-sm transition border border-gray-200">
+                        <i class="ph ph-lock-key"></i> Login
+                    </button>
+                    <button id="btn-admin-logout" onclick="window.handleAdminLogout()" class="hidden text-sm bg-red-100 text-red-600 hover:bg-red-200 px-4 py-2 rounded-full font-bold shadow-sm transition">
+                        Logout
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full">
+            <div class="text-center mb-10">
+                <h2 class="text-3xl font-bold text-gray-800 mb-3">Welcome to the Department</h2>
+                <p class="text-gray-600 max-w-2xl mx-auto">Select a section below to view schedules, guidelines, administrative details, and departmental resources.</p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="dashboard-card glass-card rounded-2xl p-6 cursor-pointer flex flex-col items-center text-center border-t-4 border-coral hover:border-teal group" onclick="window.openModal('modal-about')">
+                    <div class="icon-3d-wrapper mb-4 transition-all duration-300">
+                        <i class="ph-duotone ph-buildings text-5xl text-coral icon-3d group-hover:text-teal transition-colors"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-800 mb-1">About Us</h3>
+                    <p class="text-xs text-gray-500">Vision, Mission & Details</p>
+                </div>
+
+                <div class="dashboard-card glass-card rounded-2xl p-6 cursor-pointer flex flex-col items-center text-center border-t-4 border-teal hover:border-warmYellow group" onclick="window.openModal('modal-admin-section')">
+                    <div class="icon-3d-wrapper mb-4 transition-all duration-300 relative">
+                        <i class="ph-duotone ph-folders text-5xl text-teal icon-3d group-hover:text-warmYellow transition-colors"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-800 mb-1">Administrative</h3>
+                    <p class="text-xs text-gray-500">Policies & Minit Mesyuarat</p>
+                </div>
+
+                <div class="dashboard-card glass-card rounded-2xl p-6 cursor-pointer flex flex-col items-center text-center border-t-4 border-warmYellow hover:border-coral group relative" onclick="window.openModal('modal-ot')">
+                    <i class="ph-fill ph-lock-key absolute top-4 right-4 text-gray-400 group-hover:text-coral transition-colors text-xl"></i>
+                    <div class="icon-3d-wrapper mb-4 transition-all duration-300">
+                        <i class="ph-duotone ph-calendar-plus text-5xl text-warmYellow icon-3d group-hover:text-coral transition-colors"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-800 mb-1">OT Booking</h3>
+                    <p class="text-xs text-gray-500">Restricted Access</p>
+                </div>
+
+                <div class="dashboard-card glass-card rounded-2xl p-6 cursor-pointer flex flex-col items-center text-center border-t-4 border-teal hover:border-coral group" onclick="window.openModal('modal-clinic')">
+                    <div class="icon-3d-wrapper mb-4 transition-all duration-300">
+                        <i class="ph-duotone ph-stethoscope text-5xl text-teal icon-3d group-hover:text-coral transition-colors"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-800 mb-1">Clinic Activities</h3>
+                    <p class="text-xs text-gray-500">Schedules & flow details</p>
+                </div>
+
+                <div class="dashboard-card glass-card rounded-2xl p-6 cursor-pointer flex flex-col items-center text-center border-t-4 border-coral hover:border-warmYellow group" onclick="window.openModal('modal-mo')">
+                    <div class="icon-3d-wrapper mb-4 transition-all duration-300 relative">
+                        <i class="ph-duotone ph-student text-5xl text-coral icon-3d group-hover:text-warmYellow transition-colors"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-800 mb-1">MO Corner</h3>
+                    <p class="text-xs text-gray-500">CME & Oncall Rosters</p>
+                </div>
+
+                <div class="dashboard-card glass-card rounded-2xl p-6 cursor-pointer flex flex-col items-center text-center border-t-4 border-warmYellow hover:border-teal group" onclick="window.openModal('modal-cpg')">
+                    <div class="icon-3d-wrapper mb-4 transition-all duration-300">
+                        <i class="ph-duotone ph-books text-5xl text-warmYellow icon-3d group-hover:text-teal transition-colors"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-800 mb-1">CPG & Resources</h3>
+                    <p class="text-xs text-gray-500">Clinical Practice Guidelines</p>
+                </div>
+
+                <div class="dashboard-card glass-card rounded-2xl p-6 cursor-pointer flex flex-col items-center text-center border-t-4 border-teal hover:border-coral group" onclick="window.openModal('modal-webapp')">
+                    <div class="icon-3d-wrapper mb-4 transition-all duration-300">
+                        <i class="ph-duotone ph-app-window text-5xl text-teal icon-3d group-hover:text-coral transition-colors"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-800 mb-1">Department App</h3>
+                    <p class="text-xs text-gray-500">Internal management tool</p>
+                </div>
+
+                <div class="dashboard-card glass-card rounded-2xl p-6 cursor-pointer flex flex-col items-center text-center border-t-4 border-coral hover:border-warmYellow group relative" onclick="window.openModal('modal-announcement')">
+                    <div class="icon-3d-wrapper mb-4 transition-all duration-300">
+                        <i class="ph-duotone ph-megaphone text-5xl text-coral icon-3d group-hover:text-warmYellow transition-colors"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-800 mb-1">Announcements</h3>
+                    <p class="text-xs text-gray-500">News & upcoming courses</p>
+                </div>
+            </div>
+        </main>
+
+        <footer class="mt-auto bg-white border-t border-gray-200 py-6">
+            <div class="max-w-7xl mx-auto px-4 text-center">
+                <p class="text-sm text-gray-500 font-medium">&copy; <script>document.write(new Date().getFullYear())</script> Jabatan Obstetrik dan Ginekologi Hospital Kulim. All Rights reserved.</p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- ==========================================
+         MODALS (Popups for each section)
+         ========================================== -->
+
+    <!-- 1. About Us Modal -->
+    <div id="modal-about" class="modal-overlay hidden fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl relative border-t-8 border-coral">
+            <button onclick="window.closeAllModals()" class="close-modal absolute top-4 right-4 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full p-2"><i class="ph ph-x font-bold"></i></button>
+            <div class="p-8">
+                <div class="flex items-center gap-4 mb-6 border-b pb-4">
+                    <div class="p-3 bg-coral bg-opacity-10 rounded-full text-coral"><i class="ph-duotone ph-buildings text-3xl"></i></div>
+                    <h2 class="text-2xl font-bold text-gray-800">About Us</h2>
+                </div>
+                <div class="space-y-6">
+                    <div class="bg-cream p-6 rounded-2xl border-l-4 border-coral">
+                        <h3 class="text-xl font-bold text-gray-800 mb-2">Our Vision</h3>
+                        <p class="text-gray-600 mb-6">To be a center of excellence in obstetrics and gynecology, providing safe, comprehensive, and compassionate care for women in Kulim and surrounding areas.</p>
+                        <h3 class="text-xl font-bold text-gray-800 mb-2">Our Mission</h3>
+                        <ul class="list-disc list-inside text-gray-600 space-y-2">
+                            <li>Deliver high-quality evidence-based clinical care.</li>
+                            <li>Promote maternal and fetal well-being through continuous education.</li>
+                            <li>Ensure a safe and supportive environment for patients and staff.</li>
+                        </ul>
+                    </div>
+
+                    <div class="bg-bgGray p-6 rounded-2xl border border-gray-200 relative">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-xl font-bold text-gray-800 flex items-center gap-2"><i class="ph-duotone ph-users-three text-teal text-2xl"></i> Organization Chart</h3>
+                            <button onclick="window.triggerEdit('orgChartUrl', 'Tampal Pautan URL Gambar Carta Organisasi:')" class="admin-edit-btn hidden text-teal hover:text-teal-700 bg-teal-50 px-3 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 border border-teal-200">
+                                <i class="ph-bold ph-pencil-simple"></i> Edit Link
+                            </button>
+                        </div>
+                        <div class="flex justify-center items-center min-h-[12rem] bg-white rounded-xl border border-dashed border-gray-300 overflow-hidden p-2">
+                            <img id="org-chart-img" src="" alt="Organization Chart" class="hidden max-w-full h-auto object-contain rounded-lg">
+                            <div id="org-chart-placeholder" class="text-center text-gray-400 p-4">
+                                <i class="ph-duotone ph-image text-4xl mb-2"></i>
+                                <p class="text-sm font-medium">Chart Image Placeholder</p>
+                                <p class="text-xs mt-1">Ready for future image upload</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white border-2 border-teal p-5 rounded-2xl flex items-center justify-between group shadow-sm">
+                        <div class="flex items-center gap-4">
+                            <div class="p-3 bg-teal bg-opacity-10 rounded-full text-teal"><i class="ph-fill ph-phone-call text-2xl"></i></div>
+                            <div>
+                                <p class="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1">Department Telephone</p>
+                                <p id="display-phone" class="font-bold text-gray-800 text-lg">Loading...</p>
+                            </div>
+                        </div>
+                        <button onclick="window.triggerEdit('aboutPhone', 'Kemaskini Nombor Telefon Jabatan:')" class="admin-edit-btn hidden text-teal hover:text-teal-700 bg-teal-50 px-4 py-2 rounded-full text-sm font-bold transition flex items-center gap-1 border border-teal-200 shadow-sm hover:shadow">
+                            <i class="ph-bold ph-pencil-simple"></i> Edit
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Administrative Modal -->
+    <div id="modal-admin-section" class="modal-overlay hidden fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl relative border-t-8 border-teal">
+            <button onclick="window.closeAllModals()" class="close-modal absolute top-4 right-4 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full p-2"><i class="ph ph-x font-bold"></i></button>
+            <div class="p-8">
+                <div class="flex items-center gap-4 mb-6 border-b pb-4">
+                    <div class="p-3 bg-teal bg-opacity-10 rounded-full text-teal"><i class="ph-duotone ph-folders text-3xl"></i></div>
+                    <h2 class="text-2xl font-bold text-gray-800">Administrative</h2>
+                </div>
+                <div class="space-y-8">
+                    <div class="bg-white p-5 rounded-2xl border border-coral shadow-sm">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+                                <i class="ph-fill ph-shield-check text-coral text-2xl"></i> Department Policy
+                            </h3>
+                            <button onclick="window.openComplexModal('adminPolicies')" class="admin-edit-btn hidden bg-coral text-white px-4 py-1.5 rounded-full text-sm font-bold shadow-sm hover:bg-[#e07d57] transition flex items-center gap-1">
+                                <i class="ph-bold ph-plus"></i> Add Policy
+                            </button>
+                        </div>
+                        <div id="policies-list" class="space-y-2"></div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-teal shadow-sm">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+                                <i class="ph-fill ph-users text-teal text-2xl"></i> Minit Mesyuarat
+                            </h3>
+                            <button onclick="window.openComplexModal('adminMinutes')" class="admin-edit-btn hidden bg-teal text-white px-4 py-1.5 rounded-full text-sm font-bold shadow-sm hover:bg-teal-600 transition flex items-center gap-1">
+                                <i class="ph-bold ph-plus"></i> Add Minit
+                            </button>
+                        </div>
+                        <div id="minutes-list" class="space-y-2"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- 3. OT Booking Modal -->
+    <div id="modal-ot" class="modal-overlay hidden fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-md w-full shadow-2xl relative border-t-8 border-warmYellow overflow-hidden">
+            <button onclick="window.closeAllModals()" class="close-modal absolute top-4 right-4 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full p-2 z-10"><i class="ph ph-x font-bold"></i></button>
+            
+            <div id="ot-login-view" class="p-8 text-center block">
+                <div class="inline-block p-4 bg-gray-100 rounded-full text-gray-800 mb-4 shadow-inner">
+                    <i class="ph-fill ph-lock-key text-5xl"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">Restricted Area</h2>
+                <p class="text-sm text-gray-500 mb-6">Log in with obgynhkulim@gmail.com to access the OT Booking System.</p>
+                
+                <div class="space-y-4 text-left">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-1">Email</label>
+                        <input type="email" id="ot-email" placeholder="obgynhkulim@gmail.com" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-warmYellow outline-none transition">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-1">Password</label>
+                        <input type="password" id="ot-password" placeholder="••••••••" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-warmYellow outline-none transition">
+                        <p class="text-[10px] text-gray-400 mt-1">Use 'ot123' for preview purposes.</p>
+                    </div>
+                    <button onclick="window.handleOTLogin()" class="w-full bg-warmYellow hover:bg-yellow-500 text-gray-900 font-bold py-3 rounded-xl shadow-md transition mt-4">
+                        Unlock Access
+                    </button>
+                </div>
+            </div>
+
+            <div id="ot-content-view" class="p-8 text-center hidden">
+                <div class="inline-block p-4 bg-warmYellow bg-opacity-20 rounded-full text-yellow-600 mb-4"><i class="ph-duotone ph-calendar-plus text-5xl"></i></div>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">OT Booking System</h2>
+                <p class="text-gray-500 mb-6">Access granted. You may now manage the Operation Theatre scheduling system.</p>
+                
+                <a id="btn-ot-link" href="#" class="inline-block w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 px-6 rounded-full shadow-md transition">
+                    Open OT System <i class="ph ph-external-link ml-1"></i>
+                </a>
+                
+                <button onclick="window.triggerEdit('otBookingLink', 'Tampal URL untuk Sistem Tempahan OT:')" class="admin-edit-btn hidden mt-4 text-teal hover:text-teal-700 text-sm font-semibold flex items-center justify-center gap-1 w-full bg-teal-50 py-2 rounded-full border border-teal-200">
+                    <i class="ph-bold ph-plus-circle text-lg"></i> Add / Edit App URL
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. Clinic Activities Modal -->
+    <div id="modal-clinic" class="modal-overlay hidden fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-5xl w-full max-h-[90vh] overflow-y-auto shadow-2xl relative border-t-8 border-teal">
+            <button onclick="window.closeAllModals()" class="close-modal absolute top-4 right-4 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full p-2"><i class="ph ph-x font-bold"></i></button>
+            <div class="p-8 text-center md:text-left">
+                <div class="flex flex-col md:flex-row justify-between items-center mb-6 border-b pb-4 gap-4">
+                    <div class="flex items-center gap-4">
+                        <div class="p-3 bg-teal bg-opacity-20 rounded-full text-teal"><i class="ph-duotone ph-stethoscope text-3xl"></i></div>
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-800">Clinic Activities</h2>
+                            <p class="text-sm text-gray-500">Weekly Schedule & Patient Limits</p>
+                        </div>
+                    </div>
+                    <button onclick="window.openClinicEditModal()" class="admin-edit-btn hidden bg-teal hover:bg-teal-600 text-white px-4 py-2 rounded-full text-sm font-bold transition flex items-center gap-2 shadow-sm">
+                        <i class="ph-bold ph-pencil-simple"></i> Edit Clinic Data
+                    </button>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mt-6">
+                    <div class="bg-teal bg-opacity-5 border border-teal-100 rounded-xl p-4">
+                        <h4 class="font-bold text-teal text-lg border-b border-teal-200 pb-2 mb-3 flex justify-between items-center">Sun <span id="date-day-0" class="text-xs font-normal text-gray-500 bg-white px-2 py-1 rounded shadow-sm"></span></h4>
+                        <div class="space-y-2">
+                            <div class="flex justify-between items-center bg-white p-2 rounded shadow-sm border border-gray-100">
+                                <span class="text-xs font-semibold text-gray-700">Scan (AM)</span>
+                                <span id="stat-sunScan" class="bg-teal-100 text-teal-800 text-xs font-bold px-2 py-1 rounded">0</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-teal bg-opacity-5 border border-teal-100 rounded-xl p-4">
+                        <h4 class="font-bold text-teal text-lg border-b border-teal-200 pb-2 mb-3 flex justify-between items-center">Mon <span id="date-day-1" class="text-xs font-normal text-gray-500 bg-white px-2 py-1 rounded shadow-sm"></span></h4>
+                        <div class="space-y-2">
+                            <div class="flex justify-between items-center bg-white p-2 rounded shadow-sm border border-gray-100">
+                                <span class="text-xs font-semibold text-gray-700">Antenatal</span>
+                                <span id="stat-monAntenatal" class="bg-teal-100 text-teal-800 text-xs font-bold px-2 py-1 rounded">0</span>
+                            </div>
+                            <div class="flex justify-between items-center bg-white p-2 rounded shadow-sm border border-gray-100">
+                                <span class="text-xs font-semibold text-gray-700">Scan (AM/PM)</span>
+                                <span id="stat-monScan" class="bg-teal-100 text-teal-800 text-xs font-bold px-2 py-1 rounded">0</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-teal bg-opacity-5 border border-teal-100 rounded-xl p-4">
+                        <h4 class="font-bold text-teal text-lg border-b border-teal-200 pb-2 mb-3 flex justify-between items-center">Tue <span id="date-day-2" class="text-xs font-normal text-gray-500 bg-white px-2 py-1 rounded shadow-sm"></span></h4>
+                        <div class="space-y-2">
+                            <div class="flex justify-between items-center bg-white p-2 rounded shadow-sm border border-gray-100">
+                                <span class="text-xs font-semibold text-gray-700">Gynae</span>
+                                <span id="stat-tueGynae" class="bg-teal-100 text-teal-800 text-xs font-bold px-2 py-1 rounded">0</span>
+                            </div>
+                            <div class="flex justify-between items-center bg-white p-2 rounded shadow-sm border border-gray-100">
+                                <span class="text-xs font-semibold text-gray-700">PPC</span>
+                                <span id="stat-tuePPC" class="bg-teal-100 text-teal-800 text-xs font-bold px-2 py-1 rounded">0</span>
+                            </div>
+                            <div class="flex justify-between items-center bg-white p-2 rounded shadow-sm border border-gray-100">
+                                <span class="text-[11px] font-semibold text-gray-700">Colposcopy</span>
+                                <span id="stat-tueColpo" class="bg-teal-100 text-teal-800 text-xs font-bold px-2 py-1 rounded">0</span>
+                            </div>
+                            <div class="flex justify-between items-center bg-white p-2 rounded shadow-sm border border-gray-100">
+                                <span class="text-xs font-semibold text-gray-700">Postnatal</span>
+                                <span id="stat-tuePostnatal" class="bg-teal-100 text-teal-800 text-xs font-bold px-2 py-1 rounded">0</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-teal bg-opacity-5 border border-teal-100 rounded-xl p-4">
+                        <h4 class="font-bold text-teal text-lg border-b border-teal-200 pb-2 mb-3 flex justify-between items-center">Wed <span id="date-day-3" class="text-xs font-normal text-gray-500 bg-white px-2 py-1 rounded shadow-sm"></span></h4>
+                        <div class="space-y-2">
+                            <div class="flex justify-between items-center bg-white p-2 rounded shadow-sm border border-gray-100">
+                                <span class="text-xs font-semibold text-gray-700">Gynae</span>
+                                <span id="stat-wedGynae" class="bg-teal-100 text-teal-800 text-xs font-bold px-2 py-1 rounded">0</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-teal bg-opacity-5 border border-teal-100 rounded-xl p-4">
+                        <h4 class="font-bold text-teal text-lg border-b border-teal-200 pb-2 mb-3 flex justify-between items-center">Thu <span id="date-day-4" class="text-xs font-normal text-gray-500 bg-white px-2 py-1 rounded shadow-sm"></span></h4>
+                        <div class="space-y-2">
+                            <div class="flex justify-between items-center bg-white p-2 rounded shadow-sm border border-gray-100">
+                                <span class="text-xs font-semibold text-gray-700">Antenatal</span>
+                                <span id="stat-thuAntenatal" class="bg-teal-100 text-teal-800 text-xs font-bold px-2 py-1 rounded">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-6 bg-gray-50 p-5 rounded-2xl border border-gray-200 text-left">
+                    <h4 class="font-bold text-gray-800 mb-4 text-lg border-b border-gray-200 pb-2"><i class="ph-fill ph-star text-warmYellow mr-1"></i> Special Clinics</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                         <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+                             <span class="text-sm font-semibold text-gray-700">Detail Scan</span>
+                             <div id="stat-detailScan"></div>
+                         </div>
+                         <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+                             <span class="text-sm font-semibold text-gray-700">Combined Clinic</span>
+                             <div id="stat-combined"></div>
+                         </div>
+                         <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+                             <span class="text-[13px] font-semibold text-gray-700">Endocrine Combined</span>
+                             <div id="stat-endocrine"></div>
+                         </div>
+                    </div>
+                </div>
+                
+                <div id="clinic-app-link-section" class="mt-8 pt-6 border-t border-gray-100 text-center max-w-sm mx-auto">
+                    <p class="text-xs text-gray-500 mb-3">Sistem Tempahan App / External Link</p>
+                    <a id="btn-clinic-link" href="#" class="inline-block w-full bg-teal hover:bg-teal-600 text-white font-bold py-3 px-6 rounded-full shadow-md transition">
+                        View App System <i class="ph ph-external-link ml-1"></i>
+                    </a>
+                    <button onclick="window.triggerEdit('clinicLink', 'Tampal URL untuk Sistem Tempahan App / External Link:')" class="admin-edit-btn hidden mt-3 text-teal hover:text-teal-700 text-sm font-semibold flex items-center justify-center gap-1 w-full bg-teal-50 py-2 rounded-full border border-teal-200">
+                        <i class="ph-bold ph-pencil-simple"></i> Edit App URL
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. MO Corner Modal -->
+    <div id="modal-mo" class="modal-overlay hidden fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-5xl w-full max-h-[90vh] overflow-y-auto shadow-2xl relative border-t-8 border-coral">
+            <button onclick="window.closeAllModals()" class="close-modal absolute top-4 right-4 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full p-2 z-10"><i class="ph ph-x font-bold"></i></button>
+            <div class="p-8">
+                <div class="flex items-center gap-4 mb-6 border-b pb-4">
+                    <div class="p-3 bg-coral bg-opacity-10 rounded-full text-coral"><i class="ph-duotone ph-student text-3xl"></i></div>
+                    <h2 class="text-2xl font-bold text-gray-800">MO Corner</h2>
+                </div>
+                
+                <div class="flex flex-col lg:flex-row gap-8">
+                    <div class="lg:w-1/3">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                            <i class="ph-fill ph-calendar-check text-warmYellow text-2xl"></i> Oncall Roster
+                        </h3>
+                        <div class="bg-gray-50 border border-gray-200 p-6 rounded-2xl flex flex-col gap-5 text-center shadow-sm">
+                            <div class="inline-block mx-auto p-4 bg-white rounded-full shadow text-red-500">
+                                <i class="ph-fill ph-file-pdf text-4xl"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-gray-800 text-lg">Monthly Roster</h4>
+                                <p class="text-sm text-gray-500">Access the latest schedule.</p>
+                            </div>
+                            <a id="btn-oncall-link" href="#" class="w-full bg-white border-2 border-gray-200 text-gray-700 hover:border-teal hover:text-teal px-4 py-3 rounded-xl text-sm font-bold transition shadow-sm">
+                                Open PDF Document
+                            </a>
+                            <button onclick="window.triggerEdit('oncallLink', 'Tampal Pautan Google Drive untuk PDF Jadual Oncall:')" class="admin-edit-btn hidden w-full mt-1 text-teal hover:text-white bg-teal-50 hover:bg-teal-500 py-2 rounded-xl text-sm font-bold transition border border-teal-200 flex justify-center items-center gap-1">
+                                <i class="ph-bold ph-pencil-simple"></i> Edit Drive Link
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="lg:w-2/3">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+                                <i class="ph-fill ph-presentation-chart text-teal text-2xl"></i> CME Schedule
+                            </h3>
+                            <button onclick="window.openComplexModal('cmeSchedule')" class="admin-edit-btn hidden bg-teal text-white px-4 py-1.5 rounded-full text-sm font-bold shadow-sm hover:bg-teal-600 transition flex items-center gap-1">
+                                <i class="ph-bold ph-plus"></i> Add CME
+                            </button>
+                        </div>
+                        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr class="bg-bgGray border-b border-gray-200">
+                                            <th class="py-4 px-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Date</th>
+                                            <th class="py-4 px-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Presenter</th>
+                                            <th class="py-4 px-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Title</th>
+                                            <th class="py-4 px-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-center">CME Slides</th>
+                                            <th class="admin-edit-btn hidden py-4 px-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-center w-16">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="cme-list"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6. CPG Modal -->
+    <div id="modal-cpg" class="modal-overlay hidden fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl relative border-t-8 border-warmYellow">
+            <button onclick="window.closeAllModals()" class="close-modal absolute top-4 right-4 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full p-2"><i class="ph ph-x font-bold"></i></button>
+            <div class="p-8">
+                <div class="flex items-center gap-4 mb-6 border-b pb-4">
+                    <div class="p-3 bg-warmYellow bg-opacity-20 rounded-full text-yellow-600"><i class="ph-duotone ph-books text-3xl"></i></div>
+                    <h2 class="text-2xl font-bold text-gray-800">CPG & Resources</h2>
+                </div>
+                
+                <div class="space-y-6">
+                    <div class="bg-white p-5 rounded-2xl border border-warmYellow shadow-sm">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+                                <i class="ph-fill ph-book-bookmark text-warmYellow text-xl"></i> CPG
+                            </h3>
+                            <button onclick="window.openComplexModal('resourcesCPG')" class="admin-edit-btn hidden bg-warmYellow hover:bg-yellow-500 text-gray-900 px-3 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 shadow-sm">
+                                <i class="ph-bold ph-plus"></i> Tambah
+                            </button>
+                        </div>
+                        <div id="cpg-list" class="space-y-2"></div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-warmYellow shadow-sm">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+                                <i class="ph-fill ph-book-open text-warmYellow text-xl"></i> Green Top Guidelines
+                            </h3>
+                            <button onclick="window.openComplexModal('resourcesGreenTop')" class="admin-edit-btn hidden bg-warmYellow hover:bg-yellow-500 text-gray-900 px-3 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 shadow-sm">
+                                <i class="ph-bold ph-plus"></i> Tambah
+                            </button>
+                        </div>
+                        <div id="greentop-list" class="space-y-2"></div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-warmYellow shadow-sm">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+                                <i class="ph-fill ph-books text-warmYellow text-xl"></i> Books
+                            </h3>
+                            <button onclick="window.openComplexModal('resourcesBooks')" class="admin-edit-btn hidden bg-warmYellow hover:bg-yellow-500 text-gray-900 px-3 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 shadow-sm">
+                                <i class="ph-bold ph-plus"></i> Tambah
+                            </button>
+                        </div>
+                        <div id="books-list" class="space-y-2"></div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-warmYellow shadow-sm">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+                                <i class="ph-fill ph-article text-warmYellow text-xl"></i> Articles & Journals
+                            </h3>
+                            <button onclick="window.openComplexModal('resourcesArticles')" class="admin-edit-btn hidden bg-warmYellow hover:bg-yellow-500 text-gray-900 px-3 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 shadow-sm">
+                                <i class="ph-bold ph-plus"></i> Tambah
+                            </button>
+                        </div>
+                        <div id="articles-list" class="space-y-2"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 7. Web App Modal -->
+    <div id="modal-webapp" class="modal-overlay hidden fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-md w-full shadow-2xl relative border-t-8 border-teal">
+            <button onclick="window.closeAllModals()" class="close-modal absolute top-4 right-4 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full p-2"><i class="ph ph-x font-bold"></i></button>
+            <div class="p-8 text-center">
+                <div class="inline-block p-4 bg-teal bg-opacity-20 rounded-full text-teal mb-4"><i class="ph-duotone ph-app-window text-5xl"></i></div>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">Department Web App</h2>
+                <p class="text-gray-500 mb-6">Launch the internal web application for data entry and specific department tools.</p>
+                
+                <a id="btn-webapp-link" href="#" class="inline-block w-full bg-gray-800 hover:bg-black text-white font-bold py-3 px-6 rounded-full shadow-md transition">
+                    Launch App <i class="ph ph-rocket-launch ml-1"></i>
+                </a>
+                 <button onclick="window.triggerEdit('webAppLink', 'Tampal URL untuk Web App Jabatan:')" class="admin-edit-btn hidden mt-4 text-teal hover:text-teal-700 text-sm font-semibold flex items-center justify-center gap-1 w-full bg-teal-50 py-2 rounded-full border border-teal-200">
+                    <i class="ph-bold ph-plus-circle text-lg"></i> Add / Edit App URL
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 8. Announcement Modal -->
+    <div id="modal-announcement" class="modal-overlay hidden fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-lg w-full shadow-2xl relative border-t-8 border-coral">
+            <button onclick="window.closeAllModals()" class="close-modal absolute top-4 right-4 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full p-2"><i class="ph ph-x font-bold"></i></button>
+            <div class="p-8">
+                <div class="flex items-center justify-between mb-6 border-b pb-4">
+                    <div class="flex items-center gap-4">
+                        <div class="p-3 bg-coral bg-opacity-10 rounded-full text-coral"><i class="ph-duotone ph-megaphone text-3xl"></i></div>
+                        <h2 class="text-2xl font-bold text-gray-800">Announcements</h2>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="window.triggerEdit('announcements', 'Masukkan teks pengumuman baru:')" class="admin-edit-btn hidden bg-teal text-white px-3 py-1 rounded-full text-xs font-bold shadow-sm hover:bg-teal-600 transition flex items-center gap-1">
+                            <i class="ph-bold ph-pencil-simple"></i> Text
+                        </button>
+                        <button onclick="window.triggerEdit('announcementLink', 'Tampal URL untuk PDF atau Pautan Kursus:')" class="admin-edit-btn hidden bg-coral text-white px-3 py-1 rounded-full text-xs font-bold shadow-sm hover:bg-[#e07d57] transition flex items-center gap-1">
+                            <i class="ph-bold ph-plus"></i> Link/PDF
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="bg-cream p-6 rounded-2xl border border-yellow-200">
+                    <p id="display-announcement" class="text-gray-700 whitespace-pre-wrap leading-relaxed text-lg mb-4">
+                        Loading announcements...
+                    </p>
+                    <a id="btn-announcement-link" href="#" target="_blank" class="hidden items-center gap-2 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-bold transition shadow-sm w-fit">
+                        <i class="ph-fill ph-file-pdf text-red-500 text-lg"></i> View Attachment / Link
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ==========================================
+         SYSTEM / ADMIN MODALS
+         ========================================== -->
+
+    <!-- Developer/Admin Login Modal -->
+    <div id="admin-modal" class="modal-overlay hidden fixed inset-0 bg-black bg-opacity-60 z-[100] items-center justify-center p-4 backdrop-blur-md">
+        <div class="bg-white rounded-3xl max-w-sm w-full shadow-2xl p-8 text-center relative border-t-8 border-gray-800">
+            <button onclick="window.closeModal('admin-modal')" class="close-modal absolute top-4 right-4 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full p-2"><i class="ph ph-x font-bold"></i></button>
+            
+            <div class="inline-block p-4 bg-gray-100 rounded-full text-gray-800 mb-4 shadow-inner">
+                <i class="ph-fill ph-shield-check text-5xl"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-800 mb-1">Admin Login</h2>
+            <p class="text-xs text-gray-500 mb-6">Restricted access for authorized administrators.</p>
+
+            <div class="space-y-4 text-left">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">MOH Email</label>
+                    <input type="email" id="admin-email" placeholder="admin@moh.gov.my" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-teal focus:border-teal outline-none transition">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Password</label>
+                    <input type="password" id="admin-password" placeholder="••••••••" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-teal focus:border-teal outline-none transition">
+                    <p class="text-[10px] text-gray-400 mt-1">Gunakan kata laluan admin anda.</p>
+                </div>
+                <button onclick="window.handleAdminLogin()" class="w-full bg-gray-800 hover:bg-black text-white font-bold py-3 rounded-xl shadow-lg transition mt-4">
+                    Authenticate
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Generic Edit Content Modal -->
+    <div id="edit-modal" class="modal-overlay hidden fixed inset-0 bg-black bg-opacity-60 z-[110] items-center justify-center p-4 backdrop-blur-md">
+        <div class="bg-white rounded-3xl max-w-lg w-full shadow-2xl p-8 relative border-t-8 border-teal">
+            <button onclick="window.closeModal('edit-modal')" class="close-modal absolute top-4 right-4 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full p-2"><i class="ph ph-x font-bold"></i></button>
+            <h3 class="text-xl font-bold text-gray-800 mb-2 flex items-center gap-2">
+                <i class="ph-fill ph-pencil-line text-teal"></i> Update Content
+            </h3>
+            <p id="edit-prompt-text" class="text-sm text-gray-600 mb-4">Enter new value:</p>
+            <textarea id="edit-input-field" rows="4" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-teal focus:border-teal outline-none transition mb-4 resize-y"></textarea>
+            <div class="flex justify-end gap-3">
+                <button onclick="window.closeModal('edit-modal')" class="px-5 py-2 rounded-full text-gray-600 hover:bg-gray-100 font-medium transition">Batal</button>
+                <button onclick="window.saveEdit()" class="px-5 py-2 rounded-full bg-teal hover:bg-teal-600 text-white font-bold shadow-md transition">Simpan Perubahan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Complex Add/Edit Modal -->
+    <div id="complex-add-modal" class="modal-overlay hidden fixed inset-0 bg-black bg-opacity-60 z-[120] items-center justify-center p-4 backdrop-blur-md">
+        <div class="bg-white rounded-3xl max-w-md w-full shadow-2xl p-8 relative border-t-8 border-coral">
+            <button onclick="window.closeModal('complex-add-modal')" class="close-modal absolute top-4 right-4 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full p-2"><i class="ph ph-x font-bold"></i></button>
+            <h3 id="complex-modal-title" class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                <i class="ph-bold ph-plus-circle text-coral"></i> Add Item
+            </h3>
+            <div class="space-y-4 mb-8">
+                <div id="field-date" class="hidden">
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Tarikh</label>
+                    <input type="text" id="complex-date" placeholder="cth., 12 Okt 2026" class="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-coral outline-none bg-gray-50 focus:bg-white transition">
+                </div>
+                <div id="field-presenter" class="hidden">
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Pembentang</label>
+                    <input type="text" id="complex-presenter" placeholder="cth., Dr. Ali" class="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-coral outline-none bg-gray-50 focus:bg-white transition">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Tajuk / Nama</label>
+                    <input type="text" id="complex-title" placeholder="Masukkan tajuk..." class="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-teal outline-none bg-gray-50 focus:bg-white transition">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">URL Dokumen (Pautan)</label>
+                    <input type="url" id="complex-url" placeholder="Tampal pautan Google Drive..." class="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-teal outline-none bg-gray-50 focus:bg-white transition">
+                </div>
+            </div>
+            <div class="flex justify-end gap-3">
+                <button onclick="window.closeModal('complex-add-modal')" class="px-5 py-2 rounded-full text-gray-600 hover:bg-gray-100 font-medium transition">Batal</button>
+                <button id="complex-btn-save" onclick="window.saveComplexItem()" class="px-5 py-2 rounded-full bg-coral hover:bg-[#e07d57] text-white font-bold shadow-md transition">Simpan Item</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Clinic Activities Data Edit Modal -->
+    <div id="clinic-edit-modal" class="modal-overlay hidden fixed inset-0 bg-black bg-opacity-60 z-[120] items-center justify-center p-4 backdrop-blur-md">
+        <div class="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl p-8 relative border-t-8 border-teal">
+            <button onclick="window.closeModal('clinic-edit-modal')" class="close-modal absolute top-4 right-4 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full p-2"><i class="ph ph-x font-bold"></i></button>
+            <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                <i class="ph-bold ph-stethoscope text-teal"></i> Update Clinic Data
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <div class="space-y-4">
+                    <h4 class="font-bold text-gray-700 border-b pb-2">Routine Clinics (Patient Count)</h4>
+                    <div class="flex items-center justify-between"><label class="text-sm font-semibold">Sun - Scan (AM)</label><input type="number" id="edit-sunScan" class="w-24 px-3 py-1.5 rounded border border-gray-300 focus:ring-2 focus:ring-teal outline-none"></div>
+                    <div class="flex items-center justify-between"><label class="text-sm font-semibold">Mon - Antenatal</label><input type="number" id="edit-monAntenatal" class="w-24 px-3 py-1.5 rounded border border-gray-300 focus:ring-2 focus:ring-teal outline-none"></div>
+                    <div class="flex items-center justify-between"><label class="text-sm font-semibold">Mon - Scan (AM/PM)</label><input type="number" id="edit-monScan" class="w-24 px-3 py-1.5 rounded border border-gray-300 focus:ring-2 focus:ring-teal outline-none"></div>
+                    <div class="flex items-center justify-between"><label class="text-sm font-semibold">Tue - Gynae</label><input type="number" id="edit-tueGynae" class="w-24 px-3 py-1.5 rounded border border-gray-300 focus:ring-2 focus:ring-teal outline-none"></div>
+                    <div class="flex items-center justify-between"><label class="text-sm font-semibold">Tue - PPC</label><input type="number" id="edit-tuePPC" class="w-24 px-3 py-1.5 rounded border border-gray-300 focus:ring-2 focus:ring-teal outline-none"></div>
+                    <div class="flex items-center justify-between"><label class="text-sm font-semibold">Tue - Colposcopy</label><input type="number" id="edit-tueColpo" class="w-24 px-3 py-1.5 rounded border border-gray-300 focus:ring-2 focus:ring-teal outline-none"></div>
+                    <div class="flex items-center justify-between"><label class="text-sm font-semibold">Tue - Postnatal</label><input type="number" id="edit-tuePostnatal" class="w-24 px-3 py-1.5 rounded border border-gray-300 focus:ring-2 focus:ring-teal outline-none"></div>
+                    <div class="flex items-center justify-between"><label class="text-sm font-semibold">Wed - Gynae</label><input type="number" id="edit-wedGynae" class="w-24 px-3 py-1.5 rounded border border-gray-300 focus:ring-2 focus:ring-teal outline-none"></div>
+                    <div class="flex items-center justify-between"><label class="text-sm font-semibold">Thu - Antenatal</label><input type="number" id="edit-thuAntenatal" class="w-24 px-3 py-1.5 rounded border border-gray-300 focus:ring-2 focus:ring-teal outline-none"></div>
+                </div>
+                <div class="space-y-4">
+                    <h4 class="font-bold text-gray-700 border-b pb-2">Special Clinics</h4>
+                    <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                        <label class="flex items-center font-bold text-sm text-gray-800 mb-2 cursor-pointer"><input type="checkbox" id="edit-ds-active" class="mr-2 h-4 w-4 text-teal focus:ring-teal border-gray-300 rounded"> Detail Scan Active</label>
+                        <div class="flex items-center justify-between pl-6"><span class="text-xs text-gray-600">Patient Count:</span><input type="number" id="edit-ds-count" class="w-20 px-2 py-1 rounded border border-gray-300 text-sm"></div>
+                    </div>
+                    <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                        <label class="flex items-center font-bold text-sm text-gray-800 mb-2 cursor-pointer"><input type="checkbox" id="edit-cb-active" class="mr-2 h-4 w-4 text-teal focus:ring-teal border-gray-300 rounded"> Combined Clinic Active</label>
+                        <div class="flex items-center justify-between pl-6"><span class="text-xs text-gray-600">Patient Count:</span><input type="number" id="edit-cb-count" class="w-20 px-2 py-1 rounded border border-gray-300 text-sm"></div>
+                    </div>
+                    <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                        <label class="flex items-center font-bold text-sm text-gray-800 mb-2 cursor-pointer"><input type="checkbox" id="edit-en-active" class="mr-2 h-4 w-4 text-teal focus:ring-teal border-gray-300 rounded"> Endocrine Combined Active</label>
+                        <div class="flex items-center justify-between pl-6"><span class="text-xs text-gray-600">Patient Count:</span><input type="number" id="edit-en-count" class="w-20 px-2 py-1 rounded border border-gray-300 text-sm"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 border-t pt-4">
+                <button onclick="window.closeModal('clinic-edit-modal')" class="px-5 py-2 rounded-full text-gray-600 hover:bg-gray-100 font-medium transition">Batal</button>
+                <button onclick="window.saveClinicStats()" class="px-5 py-2 rounded-full bg-teal hover:bg-teal-600 text-white font-bold shadow-md transition">Simpan Data</button>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
